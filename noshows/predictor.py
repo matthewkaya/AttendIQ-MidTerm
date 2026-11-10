@@ -8,8 +8,15 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import joblib
+import pandas as pd
+import sklearn
 
-from noshows.pipeline import CATEGORICAL_FEATURES, FEATURE_COLUMNS, NUMERIC_FEATURES
+from noshows.pipeline import (
+    CATEGORICAL_FEATURES,
+    FEATURE_COLUMNS,
+    LEAKAGE_COLUMNS,
+    NUMERIC_FEATURES,
+)
 
 if TYPE_CHECKING:
     from noshows.appointment import Appointment
@@ -32,7 +39,12 @@ class NoShowPredictor:
         self.metadata_path = Path(metadata_path)
         self._metadata = self._load_metadata()
         self.threshold = float(self._metadata["threshold"])
-        self._model = joblib.load(self.model_path)
+        try:
+            self._model = joblib.load(self.model_path)
+        except Exception as exc:
+            raise ValueError(
+                f"Could not load model artifact: {self.model_path}"
+            ) from exc
         if not callable(getattr(self._model, "predict_proba", None)):
             raise ValueError("Saved model must provide predict_proba()")  # noqa: TRY004
 
@@ -40,7 +52,7 @@ class NoShowPredictor:
         try:
             with self.metadata_path.open(encoding="utf-8") as metadata_file:
                 metadata = json.load(metadata_file)
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             raise ValueError(
                 f"Could not read model metadata: {self.metadata_path}"
             ) from exc
@@ -71,6 +83,10 @@ class NoShowPredictor:
             )
         if not isinstance(metadata["sklearn_version"], str):
             raise ValueError("Model metadata sklearn_version must be a string")  # noqa: TRY004
+        if metadata["sklearn_version"] != sklearn.__version__:
+            raise ValueError(
+                "Model metadata scikit-learn version does not match the installed version"
+            )
         if isinstance(metadata["seed"], bool) or not isinstance(metadata["seed"], int):
             raise ValueError("Model metadata seed must be an integer")  # noqa: TRY004
         if metadata["numeric_features"] != list(NUMERIC_FEATURES):
@@ -81,6 +97,8 @@ class NoShowPredictor:
             raise ValueError(
                 "Model metadata categorical_features do not match the pipeline contract"
             )
+        if set(FEATURE_COLUMNS) & set(LEAKAGE_COLUMNS):
+            raise ValueError("Pipeline feature columns must exclude leakage columns")
         if not isinstance(metadata["best_settings"], dict):
             raise ValueError("Model metadata best_settings must be an object")  # noqa: TRY004
         if not isinstance(metadata["test_results"], dict):
@@ -94,7 +112,12 @@ class NoShowPredictor:
         if not isinstance(appointment, AppointmentType):
             raise TypeError("appointment must be an Appointment instance")
 
-        frame = appointment.to_frame()
+        to_frame = getattr(appointment, "to_frame", None)
+        if not callable(to_frame):
+            raise TypeError("Appointment must provide to_frame()")
+        frame = to_frame()
+        if not isinstance(frame, pd.DataFrame):
+            raise ValueError("Appointment.to_frame() must return a pandas DataFrame")  # noqa: TRY004
         if len(frame) != 1:
             raise ValueError("Appointment.to_frame() must return exactly one row")
         if list(frame.columns) != list(FEATURE_COLUMNS):
@@ -102,15 +125,20 @@ class NoShowPredictor:
                 "Appointment columns do not match the pipeline feature order"
             )
 
-        classes = list(getattr(self._model, "classes_", ()))
+        try:
+            classes = list(self._model.classes_)
+        except (AttributeError, TypeError) as exc:
+            raise ValueError(
+                "Saved model does not expose its prediction classes"
+            ) from exc
         if 1 not in classes:
             raise ValueError("Saved model must expose probability for positive label 1")
-        probabilities = self._model.predict_proba(frame)
         try:
+            probabilities = self._model.predict_proba(frame)
             probability = float(probabilities[0][classes.index(1)])
-        except (IndexError, TypeError, ValueError) as exc:
+        except Exception as exc:
             raise ValueError(
-                "Saved model returned an invalid probability result"
+                "Saved model could not return a valid probability for this feature row"
             ) from exc
         if not math.isfinite(probability) or not 0 <= probability <= 1:
             raise ValueError("Saved model returned a probability outside [0, 1]")
