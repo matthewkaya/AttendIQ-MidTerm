@@ -147,6 +147,14 @@ class NoShowPredictor:
             "call_recommended": probability >= self.threshold,
         }
 
+    @property
+    def feature_metadata(self) -> dict[str, tuple[str, ...]]:
+        """Expose the validated feature lists for consumers such as the UI."""
+        return {
+            "numeric_features": tuple(self._metadata["numeric_features"]),
+            "categorical_features": tuple(self._metadata["categorical_features"]),
+        }
+
     def __repr__(self) -> str:
         return (
             f"NoShowPredictor(model_path={str(self.model_path)!r}, "
