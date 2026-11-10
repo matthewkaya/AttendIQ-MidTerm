@@ -85,7 +85,8 @@ class NoShowPredictor:
             raise ValueError("Model metadata sklearn_version must be a string")  # noqa: TRY004
         if metadata["sklearn_version"] != sklearn.__version__:
             raise ValueError(
-                "Model metadata scikit-learn version does not match the installed version"
+                "Model metadata scikit-learn version does not match "
+                "the installed version"
             )
         if isinstance(metadata["seed"], bool) or not isinstance(metadata["seed"], int):
             raise ValueError("Model metadata seed must be an integer")  # noqa: TRY004
