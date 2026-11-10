@@ -5,6 +5,7 @@ from unittest.mock import Mock
 
 import pandas as pd
 import pytest
+import sklearn
 
 from noshows import predictor as predictor_module
 from noshows.appointment import Appointment
@@ -14,7 +15,7 @@ from noshows.predictor import NoShowPredictor
 
 def _metadata(**updates):
     metadata = {
-        "sklearn_version": "1.9.0",
+        "sklearn_version": sklearn.__version__,
         "seed": 11,
         "threshold": 0.5,
         "numeric_features": list(NUMERIC_FEATURES),
@@ -146,11 +147,65 @@ def test_rejects_malformed_or_incomplete_metadata(tmp_path, monkeypatch, content
     load.assert_not_called()
 
 
+def test_rejects_metadata_from_a_different_sklearn_version(tmp_path, monkeypatch):
+    metadata_path = tmp_path / "model_info.json"
+    metadata_path.write_text(
+        json.dumps(_metadata(sklearn_version="0.0.0")), encoding="utf-8"
+    )
+    load = Mock()
+    monkeypatch.setattr(predictor_module.joblib, "load", load)
+
+    with pytest.raises(ValueError, match="scikit-learn version"):
+        NoShowPredictor(tmp_path / "model.joblib", metadata_path)
+    load.assert_not_called()
+
+
+def test_wraps_missing_model_artifact_with_clear_error(tmp_path, monkeypatch):
+    metadata_path = tmp_path / "model_info.json"
+    metadata_path.write_text(json.dumps(_metadata()), encoding="utf-8")
+    missing_model_path = tmp_path / "missing.joblib"
+    load = Mock(side_effect=FileNotFoundError(missing_model_path))
+    monkeypatch.setattr(predictor_module.joblib, "load", load)
+
+    with pytest.raises(ValueError, match="Could not load model artifact"):
+        NoShowPredictor(missing_model_path, metadata_path)
+    load.assert_called_once_with(missing_model_path)
+
+
+def test_rejects_missing_metadata_artifact(tmp_path, monkeypatch):
+    load = Mock()
+    monkeypatch.setattr(predictor_module.joblib, "load", load)
+
+    with pytest.raises(ValueError, match="Could not read model metadata"):
+        NoShowPredictor(tmp_path / "no_show.joblib", tmp_path / "missing.json")
+    load.assert_not_called()
+
+
+def test_rejects_loaded_artifact_without_prediction_interface(tmp_path, monkeypatch):
+    metadata_path = tmp_path / "model_info.json"
+    metadata_path.write_text(json.dumps(_metadata()), encoding="utf-8")
+    model_path = tmp_path / "no_show.joblib"
+    load = Mock(return_value=object())
+    monkeypatch.setattr(predictor_module.joblib, "load", load)
+
+    with pytest.raises(ValueError, match="predict_proba"):
+        NoShowPredictor(model_path, metadata_path)
+    load.assert_called_once_with(model_path)
+
+
 def test_rejects_non_appointment_input(tmp_path, monkeypatch):
     predictor, _, _ = _make_predictor(tmp_path, monkeypatch)
 
     with pytest.raises(TypeError, match="Appointment"):
         predictor.predict(object())
+
+
+def test_rejects_appointment_without_dataframe_method(tmp_path, monkeypatch):
+    predictor, _, _ = _make_predictor(tmp_path, monkeypatch)
+    appointment = object.__new__(Appointment)
+
+    with pytest.raises(TypeError, match="to_frame"):
+        predictor.predict(appointment)
 
 
 def test_rejects_frame_with_wrong_column_order(tmp_path, monkeypatch):
@@ -174,6 +229,14 @@ def test_rejects_frame_with_more_than_one_row(tmp_path, monkeypatch):
         predictor.predict(appointment)
 
 
+def test_rejects_non_dataframe_from_appointment(tmp_path, monkeypatch):
+    predictor, _, _ = _make_predictor(tmp_path, monkeypatch)
+    appointment = _appointment(monkeypatch, frame={"values": [0]})
+
+    with pytest.raises(ValueError, match="pandas DataFrame"):
+        predictor.predict(appointment)
+
+
 @pytest.mark.parametrize("probability", [-0.1, 1.1, float("nan")])
 def test_rejects_invalid_model_probability(tmp_path, monkeypatch, probability):
     predictor, _, _ = _make_predictor(
@@ -183,6 +246,15 @@ def test_rejects_invalid_model_probability(tmp_path, monkeypatch, probability):
     )
 
     with pytest.raises(ValueError, match="probability"):
+        predictor.predict(_appointment(monkeypatch))
+
+
+def test_wraps_incompatible_model_prediction_failure(tmp_path, monkeypatch):
+    model = _ProbabilityModel()
+    model.predict_proba = Mock(side_effect=RuntimeError("incompatible input"))
+    predictor, _, _ = _make_predictor(tmp_path, monkeypatch, model=model)
+
+    with pytest.raises(ValueError, match="valid probability"):
         predictor.predict(_appointment(monkeypatch))
 
 
