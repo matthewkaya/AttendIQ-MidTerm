@@ -8,8 +8,5 @@ htmlcov/
 venv/
 build/
 dist/
-models/*.joblib
-models/*.pkl
-models/*.json
 reports/generated/
 .env
