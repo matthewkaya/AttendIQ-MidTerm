@@ -1,27 +1,113 @@
-# AttendIQ
+---
+title: AttendIQ Maple Physio no-show check
+emoji: 🏥
+colorFrom: blue
+colorTo: indigo
+sdk: gradio
+sdk_version: 6.31.0
+python_version: 3.12
+app_file: app.py
+---
 
-AttendIQ is a course project for predicting whether a patient will miss a scheduled appointment and estimating whether a reminder call is worthwhile.
+# Maple Physio no-show check
 
-## Project status
+## What it does
 
-This repository contains the initialization scaffold. Feature modules, model artifacts, evaluation results, and deployment configuration are intentionally pending their owners' work. The instructor-provided `noshows/data.py` is not included because its source must be copied and verified exactly.
+AttendIQ estimates the chance that a booked Maple Physio appointment will be a
+no-show and shows whether a reminder call is recommended. The call costs $8;
+an uncalled no-show costs $35. The public Hugging Face Space URL will be added
+after a public Space is created and verified.
 
-## Architecture contracts
+## How to run it locally
 
-- `noshows/data.py` will generate the deterministic source dataset and remain unchanged.
-- `noshows/pipeline.py` will be the single source for feature metadata, preprocessing construction, training split/CV, and model comparison contracts. Honest training excludes `appointment_id` and `fee_charged`.
-- `noshows/appointment.py` will own immutable input validation and convert an `Appointment` to one row with the ordered training features.
-- `noshows/train.py` will orchestrate deterministic training, tuning, out-of-fold predictions, serialization, and metadata output.
-- `noshows/evaluation.py` will calculate costs, choose the threshold from training-only out-of-fold probabilities, and evaluate the held-out test set once.
-- `noshows/predictor.py` will load the fitted pipeline and metadata once, then return probability and action for validated appointments.
-- `app.py` will derive UI controls from shared feature metadata and use the appointment/predictor interfaces.
+Use Python 3.12 and Conda. From the repository root:
 
-These interfaces are planning contracts; implementation is assigned to the team guides under `/workspaces/team/`.
+```bash
+conda env create -f environment.yml
+conda activate midterm-no-shows
+python -m noshows.train
+gradio app.py
+```
 
-## Development
+`python -m noshows.train` must create `models/no_show.joblib`,
+`models/model_info.json`, and the reports from the source data. Keep the
+scikit-learn version in `requirements.txt` identical to the version written to
+`model_info.json`. To install the pinned dependencies with pip instead, run
+`python -m pip install -r requirements-dev.txt` in Python 3.12.
 
-Install `requirements-dev.txt` in a Python 3.10+ environment. Run tests with `pytest`. Train with `python -m noshows.train` after the assigned modules and verified instructor data source are available.
+The app can start without trained artifacts and will show a model-unavailable
+message while keeping the input page available. Predictions require both
+trained model files.
 
-## Assignment and AI disclosure
+## Team
 
-The assignment PDF remains the authoritative source for requirements and academic AI-use disclosure. Verify the complete PDF and required disclosure language before implementation or submission.
+| Member | Owned parts |
+| --- | --- |
+| Muharrem Kaya | Project lead, integration, Gradio app, deployment |
+| Ibrahim Gebrel | Machine learning and training |
+| Stebin George | Appointment class and testing |
+| Joshua Obiha | Evaluation, costs, and threshold optimization |
+
+## Decisions
+
+This section will document each source column, its feature/exclusion decision,
+and the reason after model integration. The app's input limits follow the
+assignment: lead days 0–120, age 12–110, prior no-shows 0–30, hour 8–17,
+first visit 0 or 1, distance 0.1–150 km or empty, weekdays Monday–Friday, and
+the listed booking, insurance, and treatment categories. Empty distance is
+accepted and warned about because the pipeline imputes it. Invalid values and
+unseen categories must be rejected by `Appointment` with a field-specific
+error. `appointment_id` is an identifier and `fee_charged` is recorded after
+the visit; neither may be used as a prediction feature.
+
+## Model comparison
+
+Pending Ibrahim's training results. Record the five-fold stratified training
+comparison (including mean and standard deviation), chosen model, and tuning
+comparison here. Do not report placeholder or fabricated scores.
+
+## Result
+
+Pending Joshua's held-out test evaluation. Record test metrics, the costs for
+calling nobody, calling everybody, and using the model, plus the leakage check.
+The selected threshold must come from training-only out-of-fold probabilities.
+Explain uncertainty in the test-set cost difference after the real evaluation
+is available.
+
+## Tests
+
+Tests cover deployment metadata and app startup as well as the data, feature,
+cost, validation, and prediction contracts. From a fresh Python 3.12
+environment, run:
+
+```bash
+python -m ruff format --check .
+python -m ruff check .
+python -m pytest
+```
+
+## Deployment
+
+Create a **public** Hugging Face Space using the Gradio SDK and ZeroGPU (Free).
+The Space settings above select Gradio 6.31.0, Python 3.12, and `app.py`.
+Upload or push the repository contents, including both trained files under
+`models/`; do not add an access token to the repository. Open the public Space
+in a signed-out browser and verify a prediction before describing the Space as
+live. The guarded `spaces.GPU` placeholder in `app.py` allows ZeroGPU's startup
+check to find the required decorated function while preserving local imports
+when the `spaces` package is unavailable.
+
+## Demo
+
+The four-minute demo should use the verified public Space. In order, explain
+the problem and cost rule, enter a valid booking, show a rejected invalid
+booking, explain the three test costs, and state one limitation. Ensure spoken
+numbers match the final README results. Add the recording link here if the
+group records the demo.
+
+## Limitations
+
+The prediction estimates risk from the appointment fields provided to the
+model. It cannot account for unrecorded circumstances, guarantee attendance,
+or establish that a call caused a patient to attend. Include the model's
+measured limitations here after evaluation is complete.
