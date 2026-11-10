@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "attendiq-noshows"
+version = "0.1.0"
+description = "Appointment no-show prediction course project"
+requires-python = ">=3.10"
+dependencies = [
+  "gradio>=4.0",
+  "joblib>=1.3",
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "scikit-learn>=1.3",
+]
+
+[tool.setuptools.packages.find]
+include = ["noshows*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
