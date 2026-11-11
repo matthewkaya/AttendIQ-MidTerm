@@ -1,0 +1,30 @@
+{
+  "seed": 11,
+  "total_samples": 4000,
+  "training_samples": 3000,
+  "test_samples": 1000,
+  "cv_folds": 5,
+  "model_selection_metric": "roc_auc",
+  "selected_model": "Logistic Regression",
+  "best_settings": {
+    "classifier__C": 0.1,
+    "classifier__class_weight": "balanced"
+  },
+  "best_cv_roc_auc": 0.7274517979612083,
+  "oof_results": {
+    "roc_auc": 0.7271757415421777,
+    "accuracy": 0.6766666666666666,
+    "precision": 0.4243663123466885,
+    "recall": 0.6611464968152866,
+    "f1": 0.5169322709163346
+  },
+  "test_results": {
+    "roc_auc": 0.7283352986201618,
+    "accuracy": 0.685,
+    "precision": 0.4352078239608802,
+    "recall": 0.6793893129770993,
+    "f1": 0.5305514157973175
+  },
+  "threshold": 0.5,
+  "threshold_status": "Default; awaiting OOF cost optimization"
+}
