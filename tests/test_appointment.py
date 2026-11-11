@@ -1,8 +1,12 @@
 """Boundary and rejection tests for a single booked appointment."""
 
+import math
+
+import pandas as pd
 import pytest
 
 from noshows.appointment import Appointment
+from noshows.pipeline import FEATURE_COLUMNS
 
 
 def valid_fields(**overrides):
@@ -128,3 +132,51 @@ def test_rejects_a_missing_required_field(field):
 def test_rejects_columns_that_are_not_known_at_booking(field):
     with pytest.raises(ValueError, match=field):
         Appointment(**valid_fields(), **{field: 1})
+
+
+def test_fields_cannot_be_changed_or_removed():
+    appointment = Appointment(**valid_fields())
+
+    with pytest.raises(AttributeError, match="age"):
+        appointment.age = 41
+    with pytest.raises(AttributeError, match="weekday"):
+        del appointment.weekday
+    assert appointment.age == 40
+
+
+@pytest.mark.parametrize("missing", [None, "", "   ", float("nan")])
+def test_blank_distance_is_kept_and_becomes_missing_in_the_frame(missing):
+    appointment = Appointment(**valid_fields(distance_km=missing))
+    frame = appointment.to_frame()
+
+    assert appointment.distance_km is None
+    assert len(frame) == 1
+    assert math.isnan(frame.loc[0, "distance_km"])
+
+
+def test_to_frame_uses_the_pipeline_column_order():
+    appointment = Appointment(**valid_fields())
+    frame = appointment.to_frame()
+
+    assert isinstance(frame, pd.DataFrame)
+    assert list(frame.columns) == list(FEATURE_COLUMNS)
+    assert len(frame) == 1
+    assert frame.loc[0, "lead_days"] == 7
+    assert frame.loc[0, "booking"] == "online"
+    assert frame.loc[0, "distance_km"] == 5.0
+
+
+def test_editing_the_frame_does_not_change_the_appointment():
+    appointment = Appointment(**valid_fields())
+    frame = appointment.to_frame()
+    frame.loc[0, "age"] = 90
+
+    assert appointment.age == 40
+
+
+def test_equal_bookings_match_and_can_be_hashed():
+    first = Appointment(**valid_fields())
+    second = Appointment(**valid_fields())
+
+    assert first == second
+    assert len({first, second}) == 1
