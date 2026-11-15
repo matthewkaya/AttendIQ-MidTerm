@@ -15,8 +15,8 @@ app_file: app.py
 
 AttendIQ estimates the chance that a booked Maple Physio appointment will be a
 no-show and shows whether a reminder call is recommended. The call costs $8;
-an uncalled no-show costs $35. The public Hugging Face Space URL will be added
-after a public Space is created and verified.
+an uncalled no-show costs $35. The application is publicly available on Hugging Face Spaces:
+https://huggingface.co/spaces/mmatthewkaya/AttendIQ-MidTerm
 
 ## How to run it locally
 
@@ -106,18 +106,26 @@ python -m pytest
 
 ## Deployment
 
-Create a **public** Hugging Face Space using the Gradio SDK and ZeroGPU (Free).
-The Space settings above select Gradio 6.31.0, Python 3.12, and `app.py`.
-Upload or push the repository contents, including both trained files under
-`models/`; do not add an access token to the repository. Open the public Space
-in a signed-out browser and verify a prediction before describing the Space as
-live. The guarded `spaces.GPU` placeholder in `app.py` allows ZeroGPU's startup
-check to find the required decorated function while preserving local imports
-when the `spaces` package is unavailable.
+AttendIQ is deployed as a public Gradio application on Hugging Face Spaces:
+
+**Live demo:** https://huggingface.co/spaces/mmatthewkaya/AttendIQ-MidTerm
+
+The Space uses Gradio 6.31.0, Python 3.12, and the trained model
+artifacts in `models/`.
+
+Deployment was verified on November 15, 2026. The Space reported
+**Running**, and a live prediction returned:
+
+- No-show probability: **58.1%**
+- Recommendation: **Call this patient**
+
+These results matched the local application for the same appointment
+inputs.
+
 
 ## Demo
 
-The four-minute demo should use the verified public Space. In order, explain
+The four-minute demo uses the verified public Hugging Face Space. In order, explain
 the problem and cost rule, enter a valid booking, show a rejected invalid
 booking, explain the three test costs, and state one limitation. Ensure spoken
 numbers match the final README results. Add the recording link here if the
