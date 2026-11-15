@@ -1,4 +1,3 @@
-
 """Reproducible model training and evaluation for AttendIQ."""
 
 import json
@@ -9,7 +8,10 @@ import numpy as np
 import pandas as pd
 import sklearn
 from sklearn.dummy import DummyClassifier
-from sklearn.ensemble import RandomForestClassifier
+from sklearn.ensemble import (
+    HistGradientBoostingClassifier,
+    RandomForestClassifier,
+)
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
@@ -29,7 +31,9 @@ from sklearn.pipeline import Pipeline
 
 from noshows.data import make_appointments
 from noshows.pipeline import (
+    CATEGORICAL_FEATURES,
     FEATURE_COLUMNS,
+    NUMERIC_FEATURES,
     TARGET_COLUMN,
     build_preprocessor,
 )
@@ -61,12 +65,8 @@ def calculate_metrics(y_true, probabilities, threshold=0.5):
     return {
         "roc_auc": float(roc_auc_score(y_true, probabilities)),
         "accuracy": float(accuracy_score(y_true, predictions)),
-        "precision": float(
-            precision_score(y_true, predictions, zero_division=0)
-        ),
-        "recall": float(
-            recall_score(y_true, predictions, zero_division=0)
-        ),
+        "precision": float(precision_score(y_true, predictions, zero_division=0)),
+        "recall": float(recall_score(y_true, predictions, zero_division=0)),
         "f1": float(f1_score(y_true, predictions, zero_division=0)),
     }
 
@@ -88,8 +88,10 @@ def main():
     print("=" * 50)
 
     # 1. Generate the professor-provided synthetic data.
+    # Do not modify noshows/data.py.
     df = make_appointments(n=4000, seed=RANDOM_SEED)
 
+    # Only use approved features, excluding IDs and post-visit leakage.
     X = df[list(FEATURE_COLUMNS)]
     y = df[TARGET_COLUMN]
 
@@ -114,17 +116,23 @@ def main():
         random_state=RANDOM_SEED,
     )
 
-    # 3. Compare three candidate models using training data only.
+    # 3. Compare the baseline and three candidate models.
+    # The balanced Logistic Regression candidate explicitly
+    # addresses possible class imbalance.
     candidates = {
         "Dummy Classifier": DummyClassifier(strategy="prior"),
         "Logistic Regression": LogisticRegression(
             max_iter=2000,
             random_state=RANDOM_SEED,
+            class_weight="balanced",
         ),
         "Random Forest": RandomForestClassifier(
             n_estimators=200,
             random_state=RANDOM_SEED,
             n_jobs=-1,
+        ),
+        "HistGradientBoosting": HistGradientBoostingClassifier(
+            random_state=RANDOM_SEED,
         ),
     }
 
@@ -163,11 +171,7 @@ def main():
 
         cv_rows.append(row)
 
-        print(
-            f"{name}: "
-            f"ROC-AUC={row['roc_auc_mean']:.4f}, "
-            f"F1={row['f1_mean']:.4f}"
-        )
+        print(f"{name}: ROC-AUC={row['roc_auc_mean']:.4f}, F1={row['f1_mean']:.4f}")
 
     cv_results = pd.DataFrame(cv_rows)
     cv_results.to_csv(REPORT_DIR / "cv_results.csv", index=False)
@@ -183,6 +187,7 @@ def main():
         )
     )
 
+    # Eight parameter combinations: 4 C values x 2 weights.
     parameter_grid = {
         "classifier__C": [0.01, 0.1, 1.0, 10.0],
         "classifier__class_weight": [None, "balanced"],
@@ -203,10 +208,11 @@ def main():
     print(f"Best parameters: {search.best_params_}")
     print(f"Best CV ROC-AUC: {search.best_score_:.4f}")
 
-    # 5. Generate out-of-fold training predictions.
-    # These are suitable for threshold optimization without test leakage.
     best_settings = search.best_params_
 
+    # 5. Generate out-of-fold training probabilities.
+    # Joshua can use this file for cost-based threshold selection
+    # without using the held-out test set.
     tuned_pipeline = make_pipeline(
         LogisticRegression(
             C=best_settings["classifier__C"],
@@ -231,6 +237,7 @@ def main():
             "probability": oof_probabilities,
         }
     )
+
     oof_results.to_csv(
         REPORT_DIR / "oof_predictions.csv",
         index=False,
@@ -242,10 +249,10 @@ def main():
         DEFAULT_THRESHOLD,
     )
 
-    # 6. Evaluate on the held-out test set.
-    # The threshold remains fixed at 0.5 for this training run.
+    # 6. Evaluate the fitted model on the held-out test set.
+    # Keep threshold 0.5 until Joshua provides the
+    # training-only optimized threshold.
     best_model = search.best_estimator_
-
     test_probabilities = best_model.predict_proba(X_test)[:, 1]
 
     test_metrics = calculate_metrics(
@@ -260,14 +267,11 @@ def main():
     for metric, value in test_metrics.items():
         print(f"{metric}: {value:.4f}")
 
-    # 7. Save the fitted preprocessing + classifier pipeline.
+    # 7. Save the complete fitted preprocessing + classifier pipeline.
     model_path = MODEL_DIR / "no_show.joblib"
     joblib.dump(best_model, model_path)
 
-    # 8. Read the exact feature groups from the project pipeline.
-    # This must match the predictor's metadata contract.
-    from noshows.pipeline import CATEGORICAL_FEATURES, NUMERIC_FEATURES
-
+    # 8. Save metadata compatible with NoShowPredictor.
     metadata = {
         "sklearn_version": sklearn.__version__,
         "seed": RANDOM_SEED,
@@ -281,7 +285,7 @@ def main():
     metadata_path = MODEL_DIR / "model_info.json"
     save_json(metadata_path, metadata)
 
-    # 9. Save a readable training summary.
+    # 9. Save the training and evaluation summary.
     report = {
         "seed": RANDOM_SEED,
         "total_samples": int(len(df)),
