@@ -25,5 +25,9 @@ addopts = "-ra"
 line-length = 88
 src = [".", "tests"]
 
+[tool.ruff.format]
+# Preserve the instructor-supplied file exactly as required by the handout.
+exclude = ["noshows/data.py"]
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]
