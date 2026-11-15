@@ -203,6 +203,7 @@ def test_rejects_non_appointment_input(tmp_path, monkeypatch):
 def test_rejects_appointment_without_dataframe_method(tmp_path, monkeypatch):
     predictor, _, _ = _make_predictor(tmp_path, monkeypatch)
     appointment = object.__new__(Appointment)
+    monkeypatch.delattr(Appointment, "to_frame")
 
     with pytest.raises(TypeError, match="to_frame"):
         predictor.predict(appointment)
