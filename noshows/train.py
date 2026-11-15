@@ -50,8 +50,6 @@ from noshows.pipeline import (
 RANDOM_SEED = 11
 TEST_SIZE = 0.25
 N_SPLITS = 5
-DEFAULT_THRESHOLD = 0.5
-
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MODEL_DIR = PROJECT_ROOT / "models"
 REPORT_DIR = PROJECT_ROOT / "reports"
@@ -67,7 +65,18 @@ def make_pipeline(classifier):
     )
 
 
-def calculate_metrics(y_true, probabilities, threshold=0.5):
+def split_data(X, y):
+    """Make the reproducible stratified training and held-out test split."""
+    return train_test_split(
+        X,
+        y,
+        test_size=TEST_SIZE,
+        random_state=RANDOM_SEED,
+        stratify=y,
+    )
+
+
+def calculate_metrics(y_true, probabilities, threshold):
     """Calculate classification metrics for a probability threshold."""
     predictions = (np.asarray(probabilities) >= threshold).astype(int)
 
@@ -108,13 +117,7 @@ def main():
     print(f"No-show rate: {y.mean():.2%}")
 
     # 2. Reserve the test data before model selection.
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y,
-        test_size=TEST_SIZE,
-        random_state=RANDOM_SEED,
-        stratify=y,
-    )
+    X_train, X_test, y_train, y_test = split_data(X, y)
 
     print(f"Training appointments: {len(X_train)}")
     print(f"Test appointments: {len(X_test)}")
@@ -220,8 +223,7 @@ def main():
     best_settings = search.best_params_
 
     # 5. Generate out-of-fold training probabilities.
-    # Joshua can use this file for cost-based threshold selection
-    # without using the held-out test set.
+    # Optimize the decision threshold from training-only OOF probabilities.
     tuned_pipeline = make_pipeline(
         LogisticRegression(
             C=best_settings["classifier__C"],

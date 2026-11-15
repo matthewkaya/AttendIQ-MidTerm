@@ -1,8 +1,4 @@
-"""Appointment rows scored by the saved pipeline, predictor, and page.
-
-Joshua's cost functions are still unimplemented, so this check stops at the
-booking, the saved model, and the page handler.
-"""
+"""Appointment rows scored by the saved pipeline, predictor, and page."""
 
 import math
 from pathlib import Path
