@@ -104,3 +104,69 @@ def test_saved_model_is_not_loaded_again_for_a_second_booking(predictor, monkeyp
 
     predictor.predict(booking())
     predictor.predict(risky_booking())
+
+
+def _page(predictor):
+    from app import _prediction_handler
+
+    fields = (
+        *predictor.feature_metadata["numeric_features"],
+        *predictor.feature_metadata["categorical_features"],
+    )
+    return _prediction_handler(predictor, fields)
+
+
+def test_page_recommends_a_call_for_a_riskier_booking(predictor):
+    probability, recommendation = _page(predictor)(
+        60,
+        20,
+        6,
+        8,
+        1,
+        40,
+        "mon",
+        "online",
+        "self_pay",
+        "physio",
+    )
+
+    assert probability.endswith("%")
+    assert recommendation == "Call this patient"
+
+
+def test_page_warns_when_distance_is_left_blank(predictor):
+    probability, recommendation = _page(predictor)(
+        7,
+        46,
+        0,
+        12,
+        0,
+        None,
+        "wed",
+        "front_desk",
+        "provincial",
+        "acupuncture",
+    )
+
+    assert probability.endswith("%")
+    assert "Warning: distance is missing" in recommendation
+    assert "No call recommended" in recommendation
+
+
+def test_page_shows_the_field_when_age_is_impossible(predictor):
+    probability, recommendation = _page(predictor)(
+        7,
+        111,
+        0,
+        12,
+        0,
+        5,
+        "wed",
+        "front_desk",
+        "provincial",
+        "acupuncture",
+    )
+
+    assert probability == ""
+    assert "age" in recommendation
+    assert "Input error" in recommendation
