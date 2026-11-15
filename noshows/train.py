@@ -7,11 +7,13 @@ import joblib
 import numpy as np
 import pandas as pd
 import sklearn
+from sklearn.base import clone
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import (
     HistGradientBoostingClassifier,
     RandomForestClassifier,
 )
+from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
@@ -28,8 +30,15 @@ from sklearn.model_selection import (
     train_test_split,
 )
 from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 from noshows.data import make_appointments
+from noshows.evaluation import (
+    calculate_call_all_cost,
+    calculate_call_none_cost,
+    calculate_threshold_cost,
+    optimize_threshold_oof,
+)
 from noshows.pipeline import (
     CATEGORICAL_FEATURES,
     FEATURE_COLUMNS,
@@ -243,23 +252,90 @@ def main():
         index=False,
     )
 
+    optimized_threshold, oof_policy_cost = optimize_threshold_oof(
+        oof_results["y_true"], oof_results["probability"]
+    )
+
     oof_metrics = calculate_metrics(
         y_train,
         oof_probabilities,
-        DEFAULT_THRESHOLD,
+        optimized_threshold,
     )
 
-    # 6. Evaluate the fitted model on the held-out test set.
-    # Keep threshold 0.5 until Joshua provides the
-    # training-only optimized threshold.
+    # 6. Evaluate the untouched held-out test set once after threshold selection.
     best_model = search.best_estimator_
     test_probabilities = best_model.predict_proba(X_test)[:, 1]
 
     test_metrics = calculate_metrics(
         y_test,
         test_probabilities,
-        DEFAULT_THRESHOLD,
+        optimized_threshold,
     )
+    test_costs = {
+        "call_none": calculate_call_none_cost(y_test),
+        "call_all": calculate_call_all_cost(y_test),
+        "optimized_policy": calculate_threshold_cost(
+            y_test, test_probabilities, optimized_threshold
+        ),
+    }
+
+    # Run a separate training-only CV experiment with the post-visit leakage
+    # column. It is deliberately never added to FEATURE_COLUMNS or best_model.
+    leakage_preprocessor = clone(build_preprocessor())
+    numeric_pipeline = Pipeline(
+        steps=[
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
+        ]
+    )
+    leakage_preprocessor.transformers = tuple(
+        [
+            *leakage_preprocessor.transformers,
+            ("leakage_fee", numeric_pipeline, ["fee_charged"]),
+        ]
+    )
+    leakage_pipeline = Pipeline(
+        steps=[
+            ("preprocessor", leakage_preprocessor),
+            (
+                "classifier",
+                LogisticRegression(
+                    C=best_settings["classifier__C"],
+                    class_weight=best_settings["classifier__class_weight"],
+                    max_iter=2000,
+                    random_state=RANDOM_SEED,
+                ),
+            ),
+        ]
+    )
+    X_train_with_leakage = df.loc[X_train.index, [*FEATURE_COLUMNS, "fee_charged"]]
+    honest_cv_auc = cross_validate(
+        tuned_pipeline,
+        X_train,
+        y_train,
+        cv=cv,
+        scoring="roc_auc",
+        n_jobs=-1,
+        error_score="raise",
+    )["test_score"]
+    leakage_cv_auc = cross_validate(
+        leakage_pipeline,
+        X_train_with_leakage,
+        y_train,
+        cv=cv,
+        scoring="roc_auc",
+        n_jobs=-1,
+        error_score="raise",
+    )["test_score"]
+    leakage_results = {
+        "cv_folds": N_SPLITS,
+        "honest_roc_auc_mean": float(honest_cv_auc.mean()),
+        "honest_roc_auc_std": float(honest_cv_auc.std()),
+        "fee_charged_roc_auc_mean": float(leakage_cv_auc.mean()),
+        "fee_charged_roc_auc_std": float(leakage_cv_auc.std()),
+        "feature_is_post_visit": True,
+        "included_in_production_model": False,
+    }
 
     print("\nHeld-Out Test Results")
     print("-" * 50)
@@ -275,11 +351,21 @@ def main():
     metadata = {
         "sklearn_version": sklearn.__version__,
         "seed": RANDOM_SEED,
-        "threshold": DEFAULT_THRESHOLD,
+        "threshold": optimized_threshold,
         "numeric_features": list(NUMERIC_FEATURES),
         "categorical_features": list(CATEGORICAL_FEATURES),
         "best_settings": best_settings,
         "test_results": test_metrics,
+        "test_costs": test_costs,
+        "threshold_selection": {
+            "method": "training_out_of_fold_minimum_operational_cost",
+            "grid_start": 0.05,
+            "grid_end": 0.95,
+            "grid_step": 0.01,
+            "tie_break": "lowest_threshold",
+            "oof_cost": int(oof_policy_cost),
+        },
+        "leakage_experiment": leakage_results,
     }
 
     metadata_path = MODEL_DIR / "model_info.json"
@@ -297,9 +383,13 @@ def main():
         "best_settings": best_settings,
         "best_cv_roc_auc": float(search.best_score_),
         "oof_results": oof_metrics,
+        "oof_policy_cost": int(oof_policy_cost),
         "test_results": test_metrics,
-        "threshold": DEFAULT_THRESHOLD,
-        "threshold_status": "Default; awaiting OOF cost optimization",
+        "test_costs": test_costs,
+        "threshold": optimized_threshold,
+        "threshold_status": "Selected from training-only OOF predictions",
+        "threshold_selection": metadata["threshold_selection"],
+        "leakage_experiment": leakage_results,
     }
 
     save_json(REPORT_DIR / "metrics.json", report)
