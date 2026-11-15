@@ -68,11 +68,29 @@ comparison here. Do not report placeholder or fabricated scores.
 
 ## Result
 
-Pending Joshua's held-out test evaluation. Record test metrics, the costs for
-calling nobody, calling everybody, and using the model, plus the leakage check.
-The selected threshold must come from training-only out-of-fold probabilities.
-Explain uncertainty in the test-set cost difference after the real evaluation
-is available.
+The threshold was selected by minimizing operational cost over the inclusive
+0.05–0.95 grid using only the 3,000 training rows' out-of-fold probabilities.
+When thresholds have equal cost, the optimizer chooses the lowest threshold;
+this deterministic rule favors calling more patients among tied policies. The
+selected threshold is **0.48**.
+
+On the untouched 1,000-row test split, the model achieved ROC-AUC **0.7283**,
+accuracy **0.6660**, precision **0.4174**, recall **0.6947**, and F1 **0.5215**.
+The call-none policy cost **$9,170**, call-all cost **$8,000**, and the model
+policy cost **$6,288**. On this test split, the model policy costs $1,712 less
+than call-all and $2,882 less than call-none.
+
+The separate five-fold training-only leakage experiment had mean ROC-AUC
+**0.7275** (SD **0.0118**) for the production features and **0.9232** (SD
+**0.0064**) after adding `fee_charged`. That column is recorded after the visit
+and reveals information about the outcome, so the larger score cannot be used
+to judge a deployable model; `fee_charged` remains excluded from production.
+
+These costs are estimates from one 1,000-row synthetic held-out sample. The
+difference should be treated as uncertain and specific to the assignment's
+data and assumed costs; it does not show that calls cause attendance. Full
+results, including the split seed and selected threshold, are saved in
+`reports/metrics.json` and `models/model_info.json`.
 
 ## Tests
 

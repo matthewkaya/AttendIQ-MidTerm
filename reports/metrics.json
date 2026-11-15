@@ -13,18 +13,41 @@
   "best_cv_roc_auc": 0.7274517979612083,
   "oof_results": {
     "roc_auc": 0.7271757415421777,
-    "accuracy": 0.6766666666666666,
-    "precision": 0.4243663123466885,
-    "recall": 0.6611464968152866,
-    "f1": 0.5169322709163346
+    "accuracy": 0.6643333333333333,
+    "precision": 0.4161631419939577,
+    "recall": 0.7019108280254777,
+    "f1": 0.5225225225225225
   },
+  "oof_policy_cost": 18782,
   "test_results": {
     "roc_auc": 0.7283352986201618,
-    "accuracy": 0.685,
-    "precision": 0.4352078239608802,
-    "recall": 0.6793893129770993,
-    "f1": 0.5305514157973175
+    "accuracy": 0.666,
+    "precision": 0.41743119266055045,
+    "recall": 0.6946564885496184,
+    "f1": 0.5214899713467048
   },
-  "threshold": 0.5,
-  "threshold_status": "Default; awaiting OOF cost optimization"
+  "test_costs": {
+    "call_none": 9170,
+    "call_all": 8000,
+    "optimized_policy": 6288
+  },
+  "threshold": 0.48,
+  "threshold_status": "Selected from training-only OOF predictions",
+  "threshold_selection": {
+    "method": "training_out_of_fold_minimum_operational_cost",
+    "grid_start": 0.05,
+    "grid_end": 0.95,
+    "grid_step": 0.01,
+    "tie_break": "lowest_threshold",
+    "oof_cost": 18782
+  },
+  "leakage_experiment": {
+    "cv_folds": 5,
+    "honest_roc_auc_mean": 0.7274517979612083,
+    "honest_roc_auc_std": 0.011750961674137089,
+    "fee_charged_roc_auc_mean": 0.9231585455277422,
+    "fee_charged_roc_auc_std": 0.00640202054862252,
+    "feature_is_post_visit": true,
+    "included_in_production_model": false
+  }
 }
