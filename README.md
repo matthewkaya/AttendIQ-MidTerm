@@ -188,3 +188,9 @@ cannot account for circumstances absent from the booking fields, guarantee
 attendance, or establish that a reminder call causes attendance. The separate
 `fee_charged` experiment demonstrates why a post-visit field cannot be used at
 booking time, even when it improves measured ROC-AUC.
+
+### Recorded Presentation
+
+Our team presentation and live application demonstration:
+
+[Watch the Presentation Recording](https://drive.google.com/file/d/1KzGgVZEtkIJD1bAbGTs13556CzPMdMZG/view?usp=sharing)
